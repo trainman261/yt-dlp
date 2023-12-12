@@ -14,6 +14,7 @@ import contextlib
 import io
 import itertools
 import json
+import subprocess
 import xml.etree.ElementTree
 
 from yt_dlp.compat import (
@@ -28,6 +29,7 @@ from yt_dlp.utils import (
     InAdvancePagedList,
     LazyList,
     OnDemandPagedList,
+    Popen,
     age_restricted,
     args_to_str,
     base_url,
@@ -1207,6 +1209,9 @@ class TestUtil(unittest.TestCase):
         on = js_to_json('\'"\\""\'')
         self.assertEqual(json.loads(on), '"""', msg='Unnecessary quote escape should be escaped')
 
+        on = js_to_json('[new Date("spam"), \'("eggs")\']')
+        self.assertEqual(json.loads(on), ['spam', '("eggs")'], msg='Date regex should match a single string')
+
     def test_js_to_json_malformed(self):
         self.assertEqual(js_to_json('42a1'), '42"a1"')
         self.assertEqual(js_to_json('42a-1'), '42"a"-1')
@@ -1217,6 +1222,14 @@ class TestUtil(unittest.TestCase):
         self.assertEqual(js_to_json('`${name}${name}`', {'name': '5'}), '"55"')
         self.assertEqual(js_to_json('`${name}"${name}"`', {'name': '5'}), '"5\\"5\\""')
         self.assertEqual(js_to_json('`${name}`', {}), '"name"')
+
+    def test_js_to_json_common_constructors(self):
+        self.assertEqual(json.loads(js_to_json('new Map([["a", 5]])')), {'a': 5})
+        self.assertEqual(json.loads(js_to_json('Array(5, 10)')), [5, 10])
+        self.assertEqual(json.loads(js_to_json('new Array(15,5)')), [15, 5])
+        self.assertEqual(json.loads(js_to_json('new Map([Array(5, 10),new Array(15,5)])')), {'5': 10, '15': 5})
+        self.assertEqual(json.loads(js_to_json('new Date("123")')), "123")
+        self.assertEqual(json.loads(js_to_json('new Date(\'2023-10-19\')')), "2023-10-19")
 
     def test_extract_attributes(self):
         self.assertEqual(extract_attributes('<e x="y">'), {'x': 'y'})
@@ -2304,23 +2317,6 @@ Line 1
         self.assertEqual(traverse_obj({}, (0, slice(1)), traverse_string=True), [],
                          msg='branching should result in list if `traverse_string`')
 
-        # Test is_user_input behavior
-        _IS_USER_INPUT_DATA = {'range8': list(range(8))}
-        self.assertEqual(traverse_obj(_IS_USER_INPUT_DATA, ('range8', '3'),
-                                      is_user_input=True), 3,
-                         msg='allow for string indexing if `is_user_input`')
-        self.assertCountEqual(traverse_obj(_IS_USER_INPUT_DATA, ('range8', '3:'),
-                                           is_user_input=True), tuple(range(8))[3:],
-                              msg='allow for string slice if `is_user_input`')
-        self.assertCountEqual(traverse_obj(_IS_USER_INPUT_DATA, ('range8', ':4:2'),
-                                           is_user_input=True), tuple(range(8))[:4:2],
-                              msg='allow step in string slice if `is_user_input`')
-        self.assertCountEqual(traverse_obj(_IS_USER_INPUT_DATA, ('range8', ':'),
-                                           is_user_input=True), range(8),
-                              msg='`:` should be treated as `...` if `is_user_input`')
-        with self.assertRaises(TypeError, msg='too many params should result in error'):
-            traverse_obj(_IS_USER_INPUT_DATA, ('range8', ':::'), is_user_input=True)
-
         # Test re.Match as input obj
         mobj = re.fullmatch(r'0(12)(?P<group>3)(4)?', '0123')
         self.assertEqual(traverse_obj(mobj, ...), [x for x in mobj.groups() if x is not None],
@@ -2381,6 +2377,21 @@ Line 1
         assert extract_basic_auth('http://:pass@foo.bar') == ('http://foo.bar', 'Basic OnBhc3M=')
         assert extract_basic_auth('http://user:@foo.bar') == ('http://foo.bar', 'Basic dXNlcjo=')
         assert extract_basic_auth('http://user:pass@foo.bar') == ('http://foo.bar', 'Basic dXNlcjpwYXNz')
+
+    @unittest.skipUnless(compat_os_name == 'nt', 'Only relevant on Windows')
+    def test_Popen_windows_escaping(self):
+        def run_shell(args):
+            stdout, stderr, error = Popen.run(
+                args, text=True, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            assert not stderr
+            assert not error
+            return stdout
+
+        # Test escaping
+        assert run_shell(['echo', 'test"&']) == '"test""&"\n'
+        # Test if delayed expansion is disabled
+        assert run_shell(['echo', '^!']) == '"^!"\n'
+        assert run_shell('echo "^!"') == '"^!"\n'
 
 
 if __name__ == '__main__':

@@ -632,7 +632,6 @@ class TestYoutubeDL(unittest.TestCase):
 
     outtmpl_info = {
         'id': '1234',
-        'id': '1234',
         'ext': 'mp4',
         'width': None,
         'height': 1080,
@@ -785,9 +784,9 @@ class TestYoutubeDL(unittest.TestCase):
         test('%(title4)#S', 'foo_bar_test')
         test('%(title4).10S', ('foo ＂bar＂ ', 'foo ＂bar＂' + ('#' if compat_os_name == 'nt' else ' ')))
         if compat_os_name == 'nt':
-            test('%(title4)q', ('"foo \\"bar\\" test"', "＂foo ⧹＂bar⧹＂ test＂"))
-            test('%(formats.:.id)#q', ('"id 1" "id 2" "id 3"', '＂id 1＂ ＂id 2＂ ＂id 3＂'))
-            test('%(formats.0.id)#q', ('"id 1"', '＂id 1＂'))
+            test('%(title4)q', ('"foo ""bar"" test"', None))
+            test('%(formats.:.id)#q', ('"id 1" "id 2" "id 3"', None))
+            test('%(formats.0.id)#q', ('"id 1"', None))
         else:
             test('%(title4)q', ('\'foo "bar" test\'', '\'foo ＂bar＂ test\''))
             test('%(formats.:.id)#q', "'id 1' 'id 2' 'id 3'")
@@ -798,6 +797,7 @@ class TestYoutubeDL(unittest.TestCase):
         test('%(title|%)s %(title|%%)s', '% %%')
         test('%(id+1-height+3)05d', '00158')
         test('%(width+100)05d', 'NA')
+        test('%(filesize*8)d', '8192')
         test('%(formats.0) 15s', ('% 15s' % FORMATS[0], None))
         test('%(formats.0)r', (repr(FORMATS[0]), None))
         test('%(height.0)03d', '001')
