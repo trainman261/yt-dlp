@@ -17,9 +17,11 @@ from ..utils import (
     orderedSet,
     parse_iso8601,
     smuggle_url,
+    str_or_none,
     strip_or_none,
     traverse_obj,
     try_get,
+    url_or_none,
 )
 
 
@@ -255,10 +257,22 @@ class CBCPlayerPlaylistIE(InfoExtractor):
             r'window\.__INITIAL_STATE__\s*=', webpage, 'initial state', playlist_id)
 
         def entries():
-            for video_id in traverse_obj(json_content, (
-                'video', 'clipsByCategory', lambda k, _: k.lower() == playlist_id, 'items', ..., 'id'
+            for video in traverse_obj(json_content, (
+                'video', 'clipsByCategory', lambda k, _: k.lower() == playlist_id, 'items', lambda _, v: v['id']
             )):
-                yield self.url_result(f'https://www.cbc.ca/player/play/{video_id}', CBCPlayerIE)
+                yield self.url_result(
+                    f'https://www.cbc.ca/player/play/{video["id"]}', CBCPlayerIE,
+                    **traverse_obj(video, {
+                        'id': ('id', {str_or_none}),
+                        'title': 'title',
+                        'description': 'description',
+                        'series': 'showName',
+                        'categories': ('contentArea', {lambda x: [x] if x else None}),
+                        'timestamp': ('airDate', {int_or_none}),
+                        'duration': ('duration', {int_or_none}),
+                        'is_live': ('isLive', {bool}),
+                        'thumbnail': ('thumbnail', {url_or_none}),
+                    }))
 
         return self.playlist_result(entries(), playlist_id)
 
